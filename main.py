@@ -34,7 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def handle_submit_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle the 'Submit Your Name' button press."""
+    """Handle the 'Submit Your Wallet' button press."""
     await update.message.reply_text(
         "Please type your name:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Cancel")]], resize_keyboard=True)
